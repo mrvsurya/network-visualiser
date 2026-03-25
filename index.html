@@ -2,185 +2,29 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Advanced Network Simulator</title>
-    <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #1a1a1a; color: white; margin: 0; display: flex; }
-        #sidebar { width: 300px; background: #252525; padding: 20px; border-right: 1px solid #444; height: 100vh; overflow-y: auto; }
-        #main { flex-grow: 1; position: relative; height: 100vh; overflow: hidden; }
-        canvas { background: #111; width: 100%; height: 100%; }
-        .controls { position: absolute; bottom: 20px; left: 20px; background: rgba(0,0,0,0.8); padding: 15px; border-radius: 8px; }
-        .log-entry { font-size: 12px; margin-bottom: 5px; padding: 5px; border-radius: 4px; background: #333; }
-        .dns { color: #00d4ff; }
-        .tcp { color: #4caf50; }
-        button { background: #007bff; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; }
-        select { background: #333; color: white; padding: 5px; }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Protocol Simulator</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<div id="sidebar">
-    <h3>Network Log</h3>
-    <div id="log"></div>
-</div>
-
-<div id="main">
-    <canvas id="networkCanvas"></canvas>
-    <div class="controls">
-        <input type="text" id="urlInput" value="google.com" style="padding:5px">
-        <select id="modeSelect">
-            <option value="packet">Packet Switched</option>
-            <option value="circuit">Circuit Switched</option>
-        </select>
-        <button onclick="startSimulation()">Request Website</button>
+    <div id="sidebar">
+        <div id="log-header">Network Stack Trace</div>
+        <div id="log"></div>
     </div>
-</div>
 
-<script>
-const canvas = document.getElementById('networkCanvas');
-const ctx = canvas.getContext('2d');
-const logEl = document.getElementById('log');
+    <div id="main">
+        <canvas id="networkCanvas"></canvas>
+        <div class="controls">
+            <input type="text" id="urlInput" value="example.com" placeholder="Enter domain...">
+            <select id="modeSelect">
+                <option value="packet">Packet Switched (TCP/IP)</option>
+                <option value="circuit">Circuit Switched (Dedicated)</option>
+            </select>
+            <button id="startBtn">Initiate Request</button>
+        </div>
+    </div>
 
-// Setup Canvas Size
-function resize() {
-    canvas.width = window.innerWidth - 300;
-    canvas.height = window.innerHeight;
-}
-window.onresize = resize;
-resize();
-
-// 1. Network Topology
-const nodes = [
-    { id: 'Client', x: 100, y: 300, type: 'pc', color: '#fff' },
-    { id: 'Resolver', x: 250, y: 150, type: 'server', color: '#00d4ff' },
-    { id: 'Root', x: 400, y: 50, type: 'server', color: '#ffea00' },
-    { id: 'TLD', x: 550, y: 50, type: 'server', color: '#ffea00' },
-    { id: 'Auth', x: 700, y: 150, type: 'server', color: '#ffea00' },
-    { id: 'R1', x: 300, y: 400, type: 'router', color: '#777' },
-    { id: 'R2', x: 500, y: 300, type: 'router', color: '#777' },
-    { id: 'R3', x: 500, y: 500, type: 'router', color: '#777' },
-    { id: 'Web Server', x: 750, y: 400, type: 'server', color: '#4caf50' }
-];
-
-const links = [
-    ['Client', 'Resolver'], ['Resolver', 'Root'], ['Root', 'TLD'], ['TLD', 'Auth'],
-    ['Client', 'R1'], ['R1', 'R2'], ['R1', 'R3'], ['R2', 'Web Server'], ['R3', 'Web Server'], ['R2', 'R3']
-];
-
-let activePackets = [];
-
-function log(msg, type) {
-    const div = document.createElement('div');
-    div.className = `log-entry ${type}`;
-    div.innerText = `[${new Date().toLocaleTimeString().split(' ')[0]}] ${msg}`;
-    logEl.prepend(div);
-}
-
-// 2. Animation Loop
-function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Draw Links
-    ctx.strokeStyle = '#333';
-    ctx.lineWidth = 2;
-    links.forEach(link => {
-        const n1 = nodes.find(n => n.id === link[0]);
-        const n2 = nodes.find(n => n.id === link[1]);
-        ctx.beginPath();
-        ctx.moveTo(n1.x, n1.y);
-        ctx.lineTo(n2.x, n2.y);
-        ctx.stroke();
-    });
-
-    // Draw Nodes
-    nodes.forEach(n => {
-        ctx.fillStyle = n.color;
-        ctx.beginPath();
-        ctx.arc(n.x, n.y, 10, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "#fff";
-        ctx.fillText(n.id, n.x - 20, n.y + 25);
-    });
-
-    // Move Packets
-    activePackets.forEach((p, index) => {
-        const target = nodes.find(n => n.id === p.targetId);
-        const dx = target.x - p.x;
-        const dy = target.y - p.y;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        
-        if (dist < 5) {
-            p.onArrival();
-            activePackets.splice(index, 1);
-        } else {
-            p.x += (dx / dist) * 3;
-            p.y += (dy / dist) * 3;
-            ctx.fillStyle = p.color;
-            ctx.fillRect(p.x - 4, p.y - 4, 8, 8);
-        }
-    });
-
-    requestAnimationFrame(draw);
-}
-
-class Packet {
-    constructor(startNodeId, targetNodeId, color, onArrival) {
-        const start = nodes.find(n => n.id === startNodeId);
-        this.x = start.x;
-        this.y = start.y;
-        this.targetId = targetNodeId;
-        this.color = color;
-        this.onArrival = onArrival;
-    }
-}
-
-// 3. Simulation Logic
-async function startSimulation() {
-    const url = document.getElementById('urlInput').value;
-    const mode = document.getElementById('modeSelect').value;
-    
-    // PHASE 1: DNS
-    log(`DNS Request: Resolving ${url}...`, 'dns');
-    await sendPacket('Client', 'Resolver', '#00d4ff');
-    log(`Resolver querying Root...`, 'dns');
-    await sendPacket('Resolver', 'Root', '#ffea00');
-    log(`Root referred to TLD...`, 'dns');
-    await sendPacket('Root', 'TLD', '#ffea00');
-    log(`TLD referred to Authoritative...`, 'dns');
-    await sendPacket('TLD', 'Auth', '#ffea00');
-    log(`IP Found: 93.184.216.34`, 'dns');
-    await sendPacket('Auth', 'Client', '#00d4ff');
-
-    // PHASE 2: DATA TRANSFER (TCP/IP)
-    log(`Starting ${mode} transfer to Web Server...`, 'tcp');
-    
-    if (mode === 'packet') {
-        // Split data into 3 packets, take different paths
-        const p1 = sendPacketPath(['Client', 'R1', 'R2', 'Web Server'], '#4caf50', "P1");
-        const p2 = sendPacketPath(['Client', 'R1', 'R3', 'Web Server'], '#4caf50', "P2");
-        const p3 = sendPacketPath(['Client', 'R1', 'R2', 'R3', 'Web Server'], '#4caf50', "P3");
-        await Promise.all([p1, p2, p3]);
-    } else {
-        // Circuit switched: One dedicated path
-        await sendPacketPath(['Client', 'R1', 'R2', 'Web Server'], '#ff5722', "Stream");
-    }
-    
-    log("Webpage Loaded Successfully!", "tcp");
-}
-
-function sendPacket(from, to, color) {
-    return new Promise(resolve => {
-        activePackets.push(new Packet(from, to, color, resolve));
-    });
-}
-
-async function sendPacketPath(path, color, label) {
-    for (let i = 0; i < path.length - 1; i++) {
-        log(`Layer Encapsulation: Sending ${label} to ${path[i+1]}`, 'tcp');
-        await sendPacket(path[i], path[i+1], color);
-    }
-}
-
-draw();
-</script>
+    <script src="script.js"></script>
 </body>
 </html>
