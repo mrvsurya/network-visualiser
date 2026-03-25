@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>TCP/IP Encapsulation Sim</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f8f9fa; text-align: center; }
+        #sim-container { background: white; border: 1px solid #dee2e6; border-radius: 12px; display: inline-block; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .layer-label { font-size: 10px; fill: white; font-weight: bold; pointer-events: none; }
+        .node-text { font-size: 14px; font-weight: 600; fill: #495057; }
+        .controls { margin-top: 30px; }
+        button { padding: 12px 24px; font-size: 14px; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 6px; transition: 0.2s; }
+        button:hover { background: #218838; }
+        #status-msg { margin-top: 15px; font-weight: bold; color: #007bff; min-height: 20px; }
+    </style>
+</head>
+<body>
+
+    <h2>TCP/IP Encapsulation Simulator</h2>
+    <div id="status-msg">Ready to send data...</div>
+    
+    <div id="sim-container">
+        <svg width="800" height="300" id="network-svg">
+            <path d="M 150 150 L 650 150" stroke="#ced4da" stroke-width="2" stroke-dasharray="5,5" />
+
+            <rect x="50" y="110" width="100" height="80" rx="10" fill="#e9ecef" stroke="#adb5bd" />
+            <text x="65" y="210" class="node-text">Client PC</text>
+
+            <rect x="650" y="110" width="100" height="80" rx="10" fill="#e9ecef" stroke="#adb5bd" />
+            <text x="665" y="210" class="node-text">Web Server</text>
+
+            <g id="packet-group" transform="translate(100, 150)">
+                </g>
+        </svg>
+    </div>
+
+    <div class="controls">
+        <button id="send-btn" onclick="startProcess()">Start Encapsulation & Send</button>
+    </div>
+
+    <script>
+        const layers = [
+            { id: 'app', color: '#007bff', label: 'DATA', width: 40 },
+            { id: 'trans', color: '#6610f2', label: 'TCP', width: 30 },
+            { id: 'net', color: '#6f42c1', label: 'IP', width: 30 },
+            { id: 'link', color: '#e83e8c', label: 'ETH', width: 30 }
+        ];
+
+        async function startProcess() {
+            const btn = document.getElementById('send-btn');
+            const status = document.getElementById('status-msg');
+            const group = document.getElementById('packet-group');
+            
+            btn.disabled = true;
+            group.innerHTML = ''; // Clear previous
+            group.setAttribute('transform', 'translate(100, 150)');
+
+            let currentOffset = 0;
+
+            // 1. ENCAPSULATION PHASE
+            for (const layer of layers) {
+                status.innerText = `Adding ${layer.label} layer...`;
+                
+                const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                rect.setAttribute("x", currentOffset);
+                rect.setAttribute("y", -15);
+                rect.setAttribute("width", layer.width);
+                rect.setAttribute("height", 30);
+                rect.setAttribute("fill", layer.color);
+                rect.setAttribute("stroke", "white");
+                
+                const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                text.setAttribute("x", currentOffset + 5);
+                text.setAttribute("y", 5);
+                text.setAttribute("class", "layer-label");
+                text.textContent = layer.label;
+
+                group.appendChild(rect);
+                group.appendChild(text);
+                
+                currentOffset += layer.width;
+                await new Promise(r => setTimeout(r, 600)); // Delay for visual effect
+            }
+
+            // 2. TRANSMISSION PHASE
+            status.innerText = "Transmitting across the physical medium...";
+            let xPos = 100;
+            const endX = 650 - currentOffset;
+
+            function animate() {
+                if (xPos < endX) {
+                    xPos += 5;
+                    group.setAttribute('transform', `translate(${xPos}, 150)`);
+                    requestAnimationFrame(animate);
+                } else {
+                    status.innerText = "Packet Received! Starting Decapsulation...";
+                    startDecapsulation();
+                }
+            }
+            animate();
+        }
+
+        async function startDecapsulation() {
+            const group = document.getElementById('packet-group');
+            const status = document.getElementById('status-msg');
+            
+            // Reverse through layers (peeling them off)
+            const elements = Array.from(group.children);
+            for (let i = layers.length - 1; i >= 1; i--) {
+                status.innerText = `Stripping ${layers[i].label} header...`;
+                // Remove the text and the rect for that layer
+                group.removeChild(elements[i*2 + 1]); 
+                group.removeChild(elements[i*2]);
+                await new Promise(r => setTimeout(r, 600));
+            }
+            
+            status.innerText = "Success: Application Data delivered to Server!";
+            document.getElementById('send-btn').disabled = false;
+        }
+    </script>
+</body>
+</html>
