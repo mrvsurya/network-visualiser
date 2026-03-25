@@ -9,18 +9,25 @@
 <body>
 
     <div id="sidebar">
-        <div id="log-header">Network Stack Trace</div>
+        <div id="log-header">
+            <span>Network Stack Trace</span>
+            <button id="clearBtn" onclick="clearLog()">Clear</button>
+        </div>
         <div id="log"></div>
     </div>
 
     <div id="main">
         <canvas id="networkCanvas"></canvas>
         <div class="controls">
-            <input type="text" id="urlInput" value="example.com" placeholder="Enter domain...">
+            <input type="text" id="urlInput" value="example.com">
             <select id="modeSelect">
                 <option value="packet">Packet Switched (TCP/IP)</option>
                 <option value="circuit">Circuit Switched (Dedicated)</option>
             </select>
+            <div class="slider-group">
+                <label>Speed</label>
+                <input type="range" id="speedSlider" min="1" max="15" value="6">
+            </div>
             <button id="startBtn">Initiate Request</button>
         </div>
     </div>
