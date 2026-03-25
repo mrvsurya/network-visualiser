@@ -2,8 +2,8 @@ const canvas = document.getElementById('networkCanvas');
 const ctx = canvas.getContext('2d');
 const logEl = document.getElementById('log');
 const btn = document.getElementById('startBtn');
+const speedSlider = document.getElementById('speedSlider');
 
-// --- Configuration ---
 const nodes = {
     'Client': { x: 80, y: 300, color: '#fff' },
     'Resolver': { x: 220, y: 150, color: '#00d4ff' },
@@ -23,9 +23,8 @@ const links = [
 
 let activePackets = [];
 
-// --- Setup ---
 function resize() {
-    canvas.width = window.innerWidth - 350;
+    canvas.width = window.innerWidth - 380;
     canvas.height = window.innerHeight - 80;
 }
 window.onresize = resize;
@@ -35,10 +34,14 @@ function log(msg, type = '') {
     const div = document.createElement('div');
     div.className = `log-entry ${type ? type + '-log' : ''}`;
     div.innerHTML = `<strong>[${type.toUpperCase() || 'INFO'}]</strong> ${msg}`;
-    logEl.prepend(div);
+    logEl.appendChild(div); // Add to bottom
+    logEl.scrollTop = logEl.scrollHeight; // Auto-scroll
 }
 
-// --- Animation Engine ---
+function clearLog() {
+    logEl.innerHTML = '';
+}
+
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
@@ -71,8 +74,10 @@ function draw() {
             p.resolve();
             activePackets.splice(i, 1);
         } else {
-            p.x += (dx / dist) * 6;
-            p.y += (dy / dist) * 6;
+            // Speed dynamic based on slider
+            const speed = parseFloat(speedSlider.value);
+            p.x += (dx / dist) * speed;
+            p.y += (dy / dist) * speed;
             ctx.fillStyle = p.color;
             ctx.fillRect(p.x - 4, p.y - 4, 8, 8);
         }
@@ -86,62 +91,57 @@ function transmit(from, to, color) {
     });
 }
 
-async function routePath(path, color, label) {
+async function routePath(path, color, label, type) {
     for (let i = 0; i < path.length - 1; i++) {
-        log(`${label}: Processing at ${path[i]} (Network Layer Check)`, 'tcp');
+        log(`${label}: Traveling ${path[i]} → ${path[i+1]}`, type);
         await transmit(path[i], path[i+1], color);
     }
 }
 
-// --- Main Simulation ---
 async function runSimulation() {
     const url = document.getElementById('urlInput').value || 'example.com';
     const mode = document.getElementById('modeSelect').value;
     btn.disabled = true;
-    logEl.innerHTML = '';
 
-    // 1. DNS
-    log(`Client: Resolving ${url}`, 'dns');
+    // 1. DNS WITH FULL TRACE
+    log(`Client: Initiating DNS lookup for ${url}`, 'dns');
     await transmit('Client', 'Resolver', '#00d4ff');
-    for(let s of ['Root', 'TLD', 'Auth']) {
-        await transmit('Resolver', s, '#ffea00');
-        await transmit(s, 'Resolver', '#ffea00');
+    
+    const dnsNodes = [
+        { name: 'Root', info: 'TLD Referral' },
+        { name: 'TLD', info: 'Authoritative Referral' },
+        { name: 'Auth', info: 'IP: 93.184.216.34' }
+    ];
+
+    for(let s of dnsNodes) {
+        log(`Resolver -> ${s.name}: Querying...`, 'dns');
+        await transmit('Resolver', s.name, '#ffea00');
+        log(`${s.name} -> Resolver: Responding with ${s.info}`, 'dns');
+        await transmit(s.name, 'Resolver', '#ffea00');
     }
+    
+    log(`Resolver -> Client: Resolution complete.`, 'dns');
     await transmit('Resolver', 'Client', '#00d4ff');
 
-    // 2. HANDSHAKE
+    // 2. TCP HANDSHAKE
     log("TCP: 3-Way Handshake START", "hs");
-    await routePath(['Client', 'R1', 'R2', 'Server'], '#f472b6', 'SYN');
-    await routePath(['Server', 'R2', 'R1', 'Client'], '#f472b6', 'SYN-ACK');
-    await routePath(['Client', 'R1', 'R2', 'Server'], '#f472b6', 'ACK');
+    await routePath(['Client', 'R1', 'R2', 'Server'], '#f472b6', 'SYN', 'hs');
+    await routePath(['Server', 'R2', 'R1', 'Client'], '#f472b6', 'SYN-ACK', 'hs');
+    await routePath(['Client', 'R1', 'R2', 'Server'], '#f472b6', 'ACK', 'hs');
 
-    // 3. DATA REQUEST
-    log("Application: Sending HTTP GET Request", "tcp");
+    // 3. DATA & SERVER RESPONSE
+    log(`Starting ${mode} Data Exchange`, "tcp");
     if (mode === 'packet') {
         await Promise.all([
-            routePath(['Client', 'R1', 'R2', 'Server'], '#4caf50', 'GET_P1'),
-            routePath(['Client', 'R1', 'R3', 'Server'], '#4caf50', 'GET_P2')
+            routePath(['Client', 'R1', 'R2', 'Server'], '#4caf50', 'GET_REQ', 'tcp'),
+            routePath(['Server', 'R3', 'R1', 'Client'], '#00ff00', 'RES_DATA', 'tcp')
         ]);
     } else {
-        await routePath(['Client', 'R1', 'R2', 'Server'], '#ff5722', 'GET_STREAM');
+        await routePath(['Client', 'R1', 'R2', 'Server'], '#ff5722', 'HTTP_GET', 'tcp');
+        await routePath(['Server', 'R2', 'R1', 'Client'], '#ff5722', 'HTTP_RES', 'tcp');
     }
 
-    // 4. SERVER RESPONSE (New Phase)
-    log("Server: Processing Request... Sending HTML Data", "tcp");
-    await new Promise(r => setTimeout(r, 500)); // Simulating processing time
-    
-    if (mode === 'packet') {
-        // Response packets coming back potentially different paths
-        await Promise.all([
-            routePath(['Server', 'R2', 'R1', 'Client'], '#00ff00', 'RES_P1'),
-            routePath(['Server', 'R3', 'R1', 'Client'], '#00ff00', 'RES_P2'),
-            routePath(['Server', 'R2', 'R3', 'R1', 'Client'], '#00ff00', 'RES_P3')
-        ]);
-    } else {
-        await routePath(['Server', 'R2', 'R1', 'Client'], '#ff5722', 'RES_STREAM');
-    }
-
-    log("Application: Rendered page from " + url, "tcp");
+    log("Transaction Complete.", "tcp");
     btn.disabled = false;
 }
 
